@@ -34,7 +34,17 @@ extract (year from dob),extract (month from dob),extract (day from dob),
 FROM mimic2v26.d_patients;
 
 
------------------------------------- TABLE DEATH
+------------------------------------ LABS (Table mimic2.labevents → ohdsi.measurement) by PJ 
+/*
+mimic2.labevents → hadm_id/icustay_id (not represented in OHDSI), itemid-labitem (connected into d_meditems. Note: d_meditems, d_labitems and d_ioitems are joined into a single table of d_items in MIMIC3), value, and unit. 
+
+labitems has the following properties: test_name, fluid type (blood, asicites ans so on), category of test (blood chemistry, ABG...) and LOINC CODE. 
+
+*/
+
+
+
+------------------------------------ TABLE DEATH 
 
 CREATE TABLE death 
     ( 
