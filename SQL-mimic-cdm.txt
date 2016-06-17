@@ -35,13 +35,68 @@ FROM mimic2v26.d_patients;
 
 
 ------------------------------------ LABS (Table mimic2.labevents → ohdsi.measurement) by PJ 
-/*
-mimic2.labevents → hadm_id/icustay_id (not represented in OHDSI), itemid-labitem (connected into d_meditems. Note: d_meditems, d_labitems and d_ioitems are joined into a single table of d_items in MIMIC3), value, and unit. 
 
-labitems has the following properties: test_name, fluid type (blood, asicites ans so on), category of test (blood chemistry, ABG...) and LOINC CODE. 
+CREATE OR REPLACE FUNCTION is_number(prm_str text) RETURNS BOOLEAN AS $$
+DECLARE
+  v_return BOOLEAN;
+BEGIN
+  IF regexp_matches(prm_str,E'^-*[[:digit:]]+\.?[[:digit:]]+$') is not null 
+  THEN
+     v_return = TRUE;
+  ELSE
+    v_return = FALSE;
+  END IF;
+  RETURN v_return;     
+END;
+$$ LANGUAGE 'plpgsql';
 
-*/
 
+SELECT 
+  mimic2v26.labevents.subject_id,
+  concept.concept_id,
+  CAST( labevents.charttime as DATE ),
+  CAST( labevents.charttime as TIME ),
+  0 as operator_id, 
+  CASE 
+	WHEN LOWER(labevents.valueuom) = 'mm hg' OR LOWER(labevents.valueuom) = 'mmhg' 
+		OR d_labitems.loinc_code = '19991-9' THEN 8876 -- UCUM Code for millimeter mercury column
+	WHEN LOWER(labevents.valueuom) = 'meq/l' THEN 9557
+	WHEN labevents.valueuom = '%' THEN 8554
+	WHEN LOWER(labevents.valueuom) = 'meq/l' THEN 9557
+	WHEN LOWER(labevents.valueuom) = 'mg/dl' THEN 8840
+	WHEN LOWER(labevents.valueuom) = 'g/dl' THEN 8713
+	WHEN LOWER(labevents.valueuom) = 'mmol/l' THEN 8753
+	WHEN LOWER(labevents.valueuom) = 'l/min' THEN 8698
+	WHEN d_labitems.loinc_code ='11558-4' OR d_labitems.loinc_code ='2748-2' THEN 8482  -- 11558-4 is LOINC code for pH. 8482 if UCUM code for pH
+	WHEN LOWER(labevents.valueuom) = 'iu/l' THEN 8923
+	WHEN LOWER(labevents.valueuom) = 'ug/ml' THEN 8859
+	WHEN LOWER(labevents.valueuom) = 'ng/ml' THEN 8842
+	ELSE 0 
+  END as measurement_type_concept_id,
+  CASE 
+	WHEN is_number ( labevents.value ) = TRUE THEN labevents.value 
+		-- WHAT SHOULD i DO FOR <1 ? 
+	ELSE '0'
+  END as value,
+  CASE 
+	WHEN LOWER(labevents.value) = 'neg' or LOWER(labevents.value) = 'negative' THEN 9189 -- SNOMED Measurement value: Negative ??? 
+	WHEN labevents.value ILIKE '%<%' THEN 9189 -- 'Smaller than something' is considered as negative (snomed: negative) 
+	ELSE '0'
+  END as value_as_concept_id,
+  d_labitems.test_name as measurement_source_value,
+  CONCAT( mimic2v26.d_labitems.loinc_code, ' (', 'LOINC CODE', ')') as measurement_source_value,
+  labevents.valueuom as unit_source_value,
+  labevents.value as value_source_value
+  FROM mimic2v26.labevents 
+  INNER JOIN mimic2v26.d_labitems ON d_labitems.itemid = labevents.itemid 
+  INNER JOIN ohdsi_mimic2.concept ON concept.concept_code = mimic2v26.d_labitems.loinc_code
+  WHERE LOWER(labevents.valueuom) != 'mm hg' AND LOWER(labevents.valueuom) != 'meq/l' AND LOWER(labevents.valueuom) != '%'
+	AND LOWER(labevents.valueuom) != 'mg/dl' AND LOWER(labevents.valueuom) != 'g/dl'
+	AND LOWER(labevents.valueuom) != 'mmol/l' AND LOWER(labevents.valueuom) != 'l/min'
+	AND d_labitems.loinc_code != '11558-4' AND d_labitems.loinc_code != '2748-2'
+	AND d_labitems.test_name != 'AADO2'-- and LOWER(labevents.valueuom) != 'iu/l'
+	AND LOWER(labevents.valueuom) != 'ug/ml'
+LIMIT 500 
 
 
 ------------------------------------ TABLE DEATH 
