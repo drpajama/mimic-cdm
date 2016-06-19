@@ -64,8 +64,10 @@ FROM
   CAST( labevents.charttime as DATE ),
   CAST( labevents.charttime as TIME ),
   CASE
-	WHEN labevents.value ILIKE '%<=%' THEN 4171756 -- SNOMED Meas Value Operator (<) 
+	WHEN labevents.value ILIKE '%<=%' THEN 4171754 -- SNOMED Meas Value Operator (<=) 
 	WHEN labevents.value ILIKE '%<%' or LOWER(labevents.value) ILIKE '%less than%' THEN 4171756 -- SNOMED Meas Value Operator (<) 
+	WHEN labevents.value ILIKE '%>=%' THEN 4171755 -- SNOMED Meas Value Operator (>=) 
+	WHEN labevents.value ILIKE '%>%' or LOWER(labevents.value) ILIKE '%greater than%' THEN 4172704 -- SNOMED Meas Value Operator (>) 
 	ELSE 0 
 	END as operator_id, 
   CASE 
@@ -111,7 +113,9 @@ FROM
   END as measurement_type_concept_id,
 
     CASE
-	WHEN labevents.value ILIKE '%<%' or LOWER(labevents.value) ILIKE '%less than%' THEN CAST ( substring(labevents.value FROM '[0-9]+') as FLOAT )
+	WHEN labevents.value ILIKE '%<%' or LOWER(labevents.value) ILIKE '%less than%' 
+		OR labevents.value ILIKE '%>%' or LOWER(labevents.value) ILIKE '%greater than%' 
+		THEN CAST ( substring(labevents.value FROM '[0-9]+') as FLOAT )
 	WHEN is_number ( labevents.value ) = TRUE THEN CAST ( labevents.value as FLOAT )
 	ELSE 0 
 	END as value,
