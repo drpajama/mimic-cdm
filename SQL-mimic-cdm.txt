@@ -52,11 +52,22 @@ $$ LANGUAGE 'plpgsql';
 
 
 SELECT 
+   CASE
+	WHEN measurement_type_concept_id != 0 THEN measurement_type_concept_id
+	ELSE unit_concept.concept_id
+   END as unit_id,													
+  table_without_unit.*
+FROM 
+(SELECT 
   mimic2v26.labevents.subject_id,
-  concept.concept_id,
+  main_concept.concept_id,
   CAST( labevents.charttime as DATE ),
   CAST( labevents.charttime as TIME ),
-  0 as operator_id, 
+  CASE
+	WHEN labevents.value ILIKE '%<=%' THEN 4171756 -- SNOMED Meas Value Operator (<) 
+	WHEN labevents.value ILIKE '%<%' or LOWER(labevents.value) ILIKE '%less than%' THEN 4171756 -- SNOMED Meas Value Operator (<) 
+	ELSE 0 
+	END as operator_id, 
   CASE 
 	WHEN LOWER(labevents.valueuom) = 'mm hg' OR LOWER(labevents.valueuom) = 'mmhg' 
 		OR d_labitems.loinc_code = '19991-9' THEN 8876 -- UCUM Code for millimeter mercury column
@@ -71,16 +82,43 @@ SELECT
 	WHEN LOWER(labevents.valueuom) = 'iu/l' THEN 8923
 	WHEN LOWER(labevents.valueuom) = 'ug/ml' THEN 8859
 	WHEN LOWER(labevents.valueuom) = 'ng/ml' THEN 8842
+	WHEN LOWER(labevents.valueuom) = 'umol/l' THEN 8749
+	WHEN LOWER(labevents.valueuom) = 'iu/ml' THEN 8985
+	WHEN LOWER(labevents.valueuom) = 'u/ml' THEN 8763
+	WHEN LOWER(labevents.valueuom) = 'ratio' THEN 8523
+	WHEN LOWER(labevents.valueuom) = 'ug/dl' THEN 8837
+	WHEN LOWER(labevents.valueuom) = 'pg/ml' THEN 8845
+	WHEN LOWER(labevents.valueuom) = 'miu/l' THEN 9040
+	WHEN LOWER(labevents.valueuom) = 'miu/ml' THEN 9550
+	WHEN LOWER(labevents.valueuom) = 'units' THEN 8510
+	WHEN LOWER(labevents.valueuom) = 'uiu/l' THEN 44777583
+	WHEN LOWER(labevents.valueuom) = 'uiu/ml' THEN 9093
+	WHEN LOWER(labevents.valueuom) = 'uu/ml' THEN 9093 -- = uIU/mL
+	WHEN LOWER(labevents.valueuom) = 'mg/24hr' THEN 8909 
+	WHEN LOWER(labevents.valueuom) = 'u/l' THEN 8645 
+	WHEN LOWER(labevents.valueuom) = 'ml/min' THEN 8795 
+	WHEN LOWER(labevents.valueuom) = '#/cu mm' THEN 8785 -- per cubic millimeter [for WBC or RBC in peritoneal fluid] 
+	WHEN LOWER(labevents.valueuom) = '#/uL' THEN 8647
+	WHEN LOWER(labevents.valueuom) = 'gpl' THEN 4171221
+	WHEN LOWER(labevents.valueuom) = 'score' and d_labitems.loinc_code = '15112-6' THEN 4196800 -- SNOMED code for Leukocyte alkaline phosphatase score (class: procedure) 
+	WHEN LOWER(labevents.valueuom) = '/mm3' THEN 8785
+	WHEN LOWER(labevents.valueuom) = 'sec' OR LOWER(labevents.valueuom) = 'seconds' THEN 8555
+	WHEN LOWER(labevents.valueuom) = 'serum vis' THEN 3010493 -- LOINC code for Viscosity of Serum
+	WHEN LOWER(labevents.valueuom) = 'eu/dl' THEN 8829
+	WHEN LOWER(labevents.valueuom) = 'mm/hr' THEN 8752
+	
 	ELSE 0 
   END as measurement_type_concept_id,
+
+    CASE
+	WHEN labevents.value ILIKE '%<%' or LOWER(labevents.value) ILIKE '%less than%' THEN CAST ( substring(labevents.value FROM '[0-9]+') as FLOAT )
+	WHEN is_number ( labevents.value ) = TRUE THEN CAST ( labevents.value as FLOAT )
+	ELSE 0 
+	END as value,
   CASE 
-	WHEN is_number ( labevents.value ) = TRUE THEN labevents.value 
-		-- WHAT SHOULD i DO FOR <1 ? 
-	ELSE '0'
-  END as value,
-  CASE 
-	WHEN LOWER(labevents.value) = 'neg' or LOWER(labevents.value) = 'negative' THEN 9189 -- SNOMED Measurement value: Negative ??? 
-	WHEN labevents.value ILIKE '%<%' THEN 9189 -- 'Smaller than something' is considered as negative (snomed: negative) 
+	WHEN LOWER(labevents.value) = 'neg' or LOWER(labevents.value) = 'negative' THEN 9189 -- SNOMED Measurement value: Negative 
+	WHEN LOWER(labevents.value) = 'pos' or LOWER(labevents.value) = 'positive' THEN 9191 -- SNOMED Measurement value: Negative 
+	WHEN LOWER(labevents.value) = 'borderline' THEN 4162852 -- SNOMED Measurement value: boderline 
 	ELSE '0'
   END as value_as_concept_id,
   d_labitems.test_name as measurement_source_value,
@@ -89,15 +127,22 @@ SELECT
   labevents.value as value_source_value
   FROM mimic2v26.labevents 
   INNER JOIN mimic2v26.d_labitems ON d_labitems.itemid = labevents.itemid 
-  INNER JOIN ohdsi_mimic2.concept ON concept.concept_code = mimic2v26.d_labitems.loinc_code
-  WHERE LOWER(labevents.valueuom) != 'mm hg' AND LOWER(labevents.valueuom) != 'meq/l' AND LOWER(labevents.valueuom) != '%'
-	AND LOWER(labevents.valueuom) != 'mg/dl' AND LOWER(labevents.valueuom) != 'g/dl'
-	AND LOWER(labevents.valueuom) != 'mmol/l' AND LOWER(labevents.valueuom) != 'l/min'
-	AND d_labitems.loinc_code != '11558-4' AND d_labitems.loinc_code != '2748-2'
-	AND d_labitems.test_name != 'AADO2'-- and LOWER(labevents.valueuom) != 'iu/l'
-	AND LOWER(labevents.valueuom) != 'ug/ml'
-LIMIT 500 
+  INNER JOIN ohdsi_mimic2.concept as main_concept ON main_concept.concept_code = mimic2v26.d_labitems.loinc_code LIMIT 500) 
+  /*WHERE LOWER(labevents.valueuom) NOT IN ('mm hg', 'meq/l', 'k/ul', '%' , 
+   'mg/dl', 'g/dl', 'mmol/l', 'g/dl', 'l/min',  'AADO2', 'iu/l', 'ug/ml',
+    'ng/ml', 'umol/l', 'iu/ml', 'u/ml', 'ratio' , 'ug/dl' , 'ng/dl' , 
+    'units', 'mosm/l', 'mosm/kg' , 'pg/ml' ,'ug/l','+/-', 'miu/l', 'pos/neg', 'uiu/ml', 'uu/ml', 'hrs', 'mg/24hr', 'mg/g', 'mg/l', 'miu/ml', 'ml', 'ml/min',
+     '#/cu mm', 'u/l' , '#/ul', 'pg', 'gpl', 'fl', 'min', 'mpl', 'sec', 'seconds', 'score', '/mm3', 'm/ul') and LOWER(d_labitems.test_name) != 'serum vis'
+    
 
+LIMIT 3000 OFFSET 9000(*/
+
+AS table_without_unit 
+LEFT JOIN ohdsi_mimic2.concept as unit_concept on LOWER(unit_concept.concept_code) = LOWER(table_without_unit.unit_source_value)
+
+
+
+-- Failed to catch: MPL (IgM somewhat unit...). U/g/hb (for 32546-4) 1977-8: SM, LG, MOD (for urine bilirubin) 
 
 ------------------------------------ TABLE DEATH 
 
