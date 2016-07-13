@@ -1,0 +1,61 @@
+﻿
+-- Procedureevents_mv -> procedure_occurrence 
+-- Only blood culture and lines for now 
+
+SELECT 
+	temp.procedure_id as procedure_occurence_id,
+	temp.procedure_concept_id,
+	temp.subject_id as person_id,  
+	CAST(starttime as date) as procedure_date, 
+	0 as procedure_type_concept_id,
+	0 as modifier_concept_id,
+	CASE
+		WHEN temp.icustay_id IS NULL THEN temp.hadm_id
+		ELSE (temp.icustay_id + 100000000) 
+	END as visit_occurrence_id, *
+FROM 
+(SELECT procedureevents_mv.row_id as procedure_id, 
+   CASE
+	-- Cultures
+	   WHEN lower(label) in ('blood culture', 'blood cultured') THEN 30088009 -- SNOMED Blood Culture
+	   WHEN lower(label) in ('csf culture', 'csf cultured') THEN 4098503
+	   WHEN lower(label) in ('pan culture', 'pan cultured') THEN -1 -- 
+	   WHEN lower(label) in ('urine culture', 'urine cultured') THEN 4024509
+	   WHEN lower(label) in ('stool culture', 'stool cultured') THEN 4024963
+	   WHEN lower(label) in ('wound culture', 'wound cultured') THEN 4296651
+	   WHEN lower(label) in ('sputum culture', 'sputum cultured') THEN 40312248
+	   WHEN lower(label) in ('nasal swab') THEN 40335469
+	   WHEN lower(label) in ('bal fluid culture') THEN -1 -- No code for BAL fluid culture
+
+	-- arterial line 
+	   WHEN lower(label) in ('arterial line') THEN 4213288
+
+	-- central venous line
+	   WHEN lower(locationcategory) in ('invasive venous') and location ilike '%IJ%' THEN 4234953
+	   WHEN lower(locationcategory) in ('invasive venous') and lower(location) ilike '%subclavian%' THEN 4052415 
+	   WHEN lower(locationcategory) in ('invasive venous') and lower(location) ilike '%femoral%' THEN 4052416 
+
+	-- PICC line
+	   WHEN lower(label) in ('picc line') THEN 4322380
+
+	-- Line Removal: Venous
+	   WHEN lower(locationcategory) = 'invasive venous' and lower(label) ilike '%line/catheter removal%' THEN 4022792 -- SNOMED: Removal of central venous line
+	   WHEN lower(locationcategory) = 'invasive arterial' and lower(label) ilike '%line/catheter removal%' THEN -1
+	   
+	   --WHEN lower(temp.locationcategory) = 'invasive arterial' and lower(temp.label) ilike '%line/catheter removal%' THEN 4022792 -- SNOMED: Removal of central venous line
+	
+	END as procedure_concept_id, 
+	CASE
+	   -- minutes until removal 
+	   WHEN lower(locationcategory) = 'invasive venous' and lower(label) ilike '%line/catheter removal%' THEN value 
+	   WHEN lower(locationcategory) = 'invasive arterial' and lower(label) ilike '%line/catheter removal%' THEN value 
+	   ELSE 0
+	END as qualifier_source_value
+	,*
+ from mimiciii.procedureevents_mv,
+	mimiciii.d_items
+WHERE procedureevents_mv.itemid = d_items.itemid) as temp
+WHERE temp.procedure_concept_id IS NOT NULL LIMIT 5000
+
+
+-- locationcategory != '' and lower(d_items.label) not in ('paracentesis removal', 'hd fluid removal', 'hd removal', 'hemodialysis removal', 'bypass removal') and lower(d_items.label) ilike '%removal%' 
