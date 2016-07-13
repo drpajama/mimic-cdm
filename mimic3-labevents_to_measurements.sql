@@ -29,7 +29,7 @@ SELECT
 	temp_table.value_as_number,
 	temp_table.value_as_concept_id,
   CASE
-	WHEN is_number ( CAST(unit_concept.concept_id AS TEXT) ) = TRUE THEN unit_concept.concept_id
+	WHEN unit_concept.concept_id IS NOT NULL THEN unit_concept.concept_id
 	WHEN LOWER(temp_table.valueuom) = 'mm hg' OR LOWER(temp_table.valueuom) = 'mmhg' 
 		OR temp_table.loinc_code = '19991-9' THEN 8876 -- UCUM Code for millimeter mercury column
 	WHEN LOWER(temp_table.valueuom) = 'meq/l' THEN 9557
@@ -83,7 +83,7 @@ FROM
  CAST( labevents.charttime as DATE ) as measurement_date,
  CAST( labevents.charttime as TIME ) as measurement_time,
  CASE
-      WHEN is_number(CAST(labevents.hadm_id AS TEXT)) = TRUE THEN 45877824  -- It mean that it was measured in the ICU
+      WHEN labevents.hadm_id IS NOT NULL = TRUE THEN 45877824  -- It mean that it was measured in the ICU
       ELSE 45461226 -- could be anything else
  END as measurement_type_concept_id,
  CASE
